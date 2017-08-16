@@ -26,7 +26,7 @@ void handle_control_message(const char *msg, const char *arg);
 struct command
 {
         /* list of commands in an action */
-    struct listnode clist;
+    struct listnode clist;//构建同一个action的command链表
 
     int (*func)(int nargs, char **args);
     int nargs;
@@ -37,14 +37,14 @@ struct action {
         /* node in list of all actions */
     struct listnode alist;
         /* node in the queue of pending actions */
-    struct listnode qlist;
+    struct listnode qlist;//通过这个字段构建待执行队列，这个字段是一个空节点，这个节点的后继节点才是队列头，这个节点的前驱节点是队列尾节点
         /* node in list of actions for a trigger */
     struct listnode tlist;
 
     unsigned hash;
-    const char *name;
+    const char *name;//触发器名字，看到后续的版本触发器也是用了一个链表结构，
     
-    struct listnode commands;
+    struct listnode commands;//这个字段是一个空节点，这个节点的后继节点才是第一个节点，这个节点的前驱节点是最后一个节点
     struct command *current;
 };
 
@@ -76,7 +76,7 @@ struct svcenvinfo {
 
 struct service {
         /* list of all services */
-    struct listnode slist;
+    struct listnode slist;//用来链接所有的service，
 
     const char *name;
     const char *classname;

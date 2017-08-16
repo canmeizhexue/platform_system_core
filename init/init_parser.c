@@ -36,6 +36,7 @@
 #define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
 #include <sys/_system_properties.h>
 
+//声明静态变量，不是指针，
 static list_declare(service_list);
 static list_declare(action_list);
 static list_declare(action_queue);
@@ -71,6 +72,7 @@ struct {
 #define kw_func(kw) (keyword_info[kw].func)
 #define kw_nargs(kw) (keyword_info[kw].nargs)
 
+//关键字匹配，返回关键字对应的整数编码，
 int lookup_keyword(const char *s)
 {
     switch (*s++) {
@@ -154,7 +156,7 @@ int lookup_keyword(const char *s)
 void parse_line_no_op(struct parse_state *state, int nargs, char **args)
 {
 }
-
+//配置文件主要由action和service俩大部分来进行组织的，
 void parse_new_section(struct parse_state *state, int kw,
                        int nargs, char **args)
 {
@@ -169,8 +171,10 @@ void parse_new_section(struct parse_state *state, int kw,
         }
         break;
     case K_on:
+    	//保存的是action
         state->context = parse_action(state, nargs, args);
         if (state->context) {
+        	//赋值，
             state->parse_line = parse_line_action;
             return;
         }
@@ -198,6 +202,7 @@ static void parse_config(const char *fn, char *s)
             return;
         case T_NEWLINE:
             if (nargs) {
+            		//匹配关键字，
                 int kw = lookup_keyword(args[0]);
                 if (kw_is(kw, SECTION)) {
                     state.parse_line(&state, 0, 0);
@@ -216,7 +221,7 @@ static void parse_config(const char *fn, char *s)
         }
     }
 }
-
+//解析fn指向的配置文件，
 int init_parse_config_file(const char *fn)
 {
     char *data;
@@ -227,7 +232,7 @@ int init_parse_config_file(const char *fn)
     DUMP();
     return 0;
 }
-
+//判断名字是否合规，
 static int valid_name(const char *name)
 {
     if (strlen(name) > 16) {
@@ -241,7 +246,7 @@ static int valid_name(const char *name)
     }
     return 1;
 }
-
+//在service_list链表里面查找是否已经存在了指定名字的服务，
 struct service *service_find_by_name(const char *name)
 {
     struct listnode *node;
@@ -254,7 +259,7 @@ struct service *service_find_by_name(const char *name)
     }
     return 0;
 }
-
+//通过进程id在service_list查找service
 struct service *service_find_by_pid(pid_t pid)
 {
     struct listnode *node;
@@ -267,7 +272,7 @@ struct service *service_find_by_pid(pid_t pid)
     }
     return 0;
 }
-
+//通过keychord在service_list里查找service
 struct service *service_find_by_keychord(int keychord_id)
 {
     struct listnode *node;
@@ -280,7 +285,7 @@ struct service *service_find_by_keychord(int keychord_id)
     }
     return 0;
 }
-
+//对service_list里面的每一个service调用参数指定函数
 void service_for_each(void (*func)(struct service *svc))
 {
     struct listnode *node;
@@ -290,7 +295,7 @@ void service_for_each(void (*func)(struct service *svc))
         func(svc);
     }
 }
-
+//遍历service_list，如果服务的名字和参数指定的一样，那么调用指定的函数
 void service_for_each_class(const char *classname,
                             void (*func)(struct service *svc))
 {
@@ -303,7 +308,7 @@ void service_for_each_class(const char *classname,
         }
     }
 }
-
+//遍历service_list，对于匹配标记的service，调用指定的函数
 void service_for_each_flags(unsigned matchflags,
                             void (*func)(struct service *svc))
 {
@@ -316,7 +321,7 @@ void service_for_each_flags(unsigned matchflags,
         }
     }
 }
-
+//遍历action_list，找到指定触发器触发的action，然后调用函数指针func指定的函数，
 void action_for_each_trigger(const char *trigger,
                              void (*func)(struct action *act))
 {
@@ -380,30 +385,30 @@ void queue_all_property_triggers()
         }
     }
 }
-
+//构建一个action，并且为这个action构建一个command,command对应的执行函数是传入的函数指针，
 void queue_builtin_action(int (*func)(int nargs, char **args), char *name)
 {
     struct action *act;
     struct command *cmd;
 
-    act = calloc(1, sizeof(*act));
+    act = calloc(1, sizeof(*act));//分配内存，
     act->name = name;
     list_init(&act->commands);
 
-    cmd = calloc(1, sizeof(*cmd));
+    cmd = calloc(1, sizeof(*cmd));//分配内存，
     cmd->func = func;
     cmd->args[0] = name;
-    list_add_tail(&act->commands, &cmd->clist);
+    list_add_tail(&act->commands, &cmd->clist);//将command添加到action的commands链表尾部，
 
-    list_add_tail(&action_list, &act->alist);
-    action_add_queue_tail(act);
+    list_add_tail(&action_list, &act->alist);//将这个action添加到action_list的尾部，
+    action_add_queue_tail(act);//将这个action添加到action_queue的队列尾部，
 }
-
+//将指定的action添加到action_queue的队列尾部，
 void action_add_queue_tail(struct action *act)
 {
     list_add_tail(&action_queue, &act->qlist);
 }
-
+//移除action_queue队列头
 struct action *action_remove_queue_head(void)
 {
     if (list_empty(&action_queue)) {
@@ -415,7 +420,7 @@ struct action *action_remove_queue_head(void)
         return act;
     }
 }
-
+//判断action_queue队列是否为空
 int action_queue_empty()
 {
     return list_empty(&action_queue);
@@ -424,11 +429,13 @@ int action_queue_empty()
 static void *parse_service(struct parse_state *state, int nargs, char **args)
 {
     struct service *svc;
+    //service参数不能小于3个，
     if (nargs < 3) {
         parse_error(state, "services must have a name and a program\n");
         return 0;
     }
     if (!valid_name(args[1])) {
+    	//第二个参数代表服务的名字，
         parse_error(state, "invalid service name '%s'\n", args[1]);
         return 0;
     }
@@ -445,17 +452,17 @@ static void *parse_service(struct parse_state *state, int nargs, char **args)
         parse_error(state, "out of memory\n");
         return 0;
     }
-    svc->name = args[1];
+    svc->name = args[1];//服务的名字，
     svc->classname = "default";
     memcpy(svc->args, args + 2, sizeof(char*) * nargs);
     svc->args[nargs] = 0;
     svc->nargs = nargs;
     svc->onrestart.name = "onrestart";
-    list_init(&svc->onrestart.commands);
-    list_add_tail(&service_list, &svc->slist);
+    list_init(&svc->onrestart.commands);//初始化链表
+    list_add_tail(&service_list, &svc->slist);//将service添加到service_list
     return svc;
 }
-
+//解析service相关信息，
 static void parse_line_service(struct parse_state *state, int nargs, char **args)
 {
     struct service *svc = state->context;
@@ -619,7 +626,7 @@ static void parse_line_service(struct parse_state *state, int nargs, char **args
         parse_error(state, "invalid option '%s'\n", args[0]);
     }
 }
-
+//解析action，
 static void *parse_action(struct parse_state *state, int nargs, char **args)
 {
     struct action *act;
@@ -632,39 +639,42 @@ static void *parse_action(struct parse_state *state, int nargs, char **args)
         return 0;
     }
     act = calloc(1, sizeof(*act));
-    act->name = args[1];
+    act->name = args[1];//一共俩个参数，第二个参数是触发器的名字，
     list_init(&act->commands);
-    list_add_tail(&action_list, &act->alist);
+    list_add_tail(&action_list, &act->alist);//添加到action_list的尾部，
         /* XXX add to hash */
     return act;
 }
-
+//nargs代表args的参数个数，
 static void parse_line_action(struct parse_state* state, int nargs, char **args)
 {
     struct command *cmd;
     struct action *act = state->context;
-    int (*func)(int nargs, char **args);
+    int (*func)(int nargs, char **args);//函数指针，
     int kw, n;
 
     if (nargs == 0) {
         return;
     }
-
+		//转换关键字到对应的整形值
     kw = lookup_keyword(args[0]);
     if (!kw_is(kw, COMMAND)) {
+    	//不是command
         parse_error(state, "invalid command '%s'\n", args[0]);
         return;
     }
-
+		//参数个数，也就是说不同命令需要的参数个数也都是已经固定的了，
     n = kw_nargs(kw);
     if (nargs < n) {
         parse_error(state, "%s requires %d %s\n", args[0], n - 1,
             n > 2 ? "arguments" : "argument");
         return;
     }
+    //分配内存，为什么要多加后面那部分？
     cmd = malloc(sizeof(*cmd) + sizeof(char*) * nargs);
-    cmd->func = kw_func(kw);
+    cmd->func = kw_func(kw);//函数指针，不同的命令对应的函数指针也是固定的，不过所有的命令的参数形式是一样的，
     cmd->nargs = nargs;
     memcpy(cmd->args, args, sizeof(char*) * nargs);
+    //将这个command关联到action上，也就是添加到action的command链表的尾部
     list_add_tail(&act->commands, &cmd->clist);
 }

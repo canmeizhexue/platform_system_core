@@ -29,6 +29,8 @@ int do_chmod(int nargs, char **args);
 int do_loglevel(int nargs, char **args);
 int do_wait(int nargs, char **args);
 #define __MAKE_KEYWORD_ENUM__
+
+//宏定义，没有续行符，那么就是一行，
 #define KEYWORD(symbol, flags, nargs, func) K_##symbol,
 enum {
     K_UNKNOWN,
@@ -79,6 +81,7 @@ enum {
 #ifdef __MAKE_KEYWORD_ENUM__
     KEYWORD_COUNT,
 };
+//结束某个宏定义，
 #undef __MAKE_KEYWORD_ENUM__
 #undef KEYWORD
 #endif

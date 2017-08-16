@@ -71,7 +71,7 @@ static char qemu[32];
 static struct action *cur_action = NULL;
 static struct command *cur_command = NULL;
 static struct listnode *command_queue = NULL;
-
+//通知服务的状态，
 void notify_service_state(const char *name, const char *state)
 {
     char pname[PROP_NAME_MAX];
@@ -88,7 +88,8 @@ static time_t process_needs_restart;
 
 static const char *ENV[32];
 
-/* add_environment - add "key=value" to the current environment */
+/* 添加环境变量，这里只是放到内存，难道不用存到文件之类的吗？
+add_environment - add "key=value" to the current environment */
 int add_environment(const char *key, const char *val)
 {
     int n;
@@ -127,7 +128,7 @@ static void open_console()
     dup2(fd, 2);
     close(fd);
 }
-
+//发布socket，
 static void publish_socket(const char *name, int fd)
 {
     char key[64] = ANDROID_SOCKET_ENV_PREFIX;
@@ -142,7 +143,7 @@ static void publish_socket(const char *name, int fd)
     /* make sure we don't close-on-exec */
     fcntl(fd, F_SETFD, 0);
 }
-
+//启动服务，这个里面会创建一个子进程来运行指定的服务，
 void service_start(struct service *svc, const char *dynamic_args)
 {
     struct stat s;
@@ -187,11 +188,12 @@ void service_start(struct service *svc, const char *dynamic_args)
     }
 
     NOTICE("starting '%s'\n", svc->name);
-
+		//可以看到这里创建了一个新的进程啦，，，，，，，
     pid = fork();
-
+		//fork会返回俩次，返回值为0时是在新创建的子进程中，返回值大于0时，是在当前进程（相对于新建的进程来说，是父进程，返回值是新建进程的进程id）
     if (pid == 0) {
-        struct socketinfo *si;
+    	//运行在新创建的子进程中，
+        struct socketinfo *si; //应该是静态的用来描述socket的，
         struct svcenvinfo *ei;
         char tmp[32];
         int fd, sz;
@@ -201,17 +203,22 @@ void service_start(struct service *svc, const char *dynamic_args)
             sprintf(tmp, "%d,%d", dup(fd), sz);
             add_environment("ANDROID_PROPERTY_WORKSPACE", tmp);
         }
-
+				//处理环境变量，
         for (ei = svc->envvars; ei; ei = ei->next)
             add_environment(ei->name, ei->value);
-
+				
+				
+				//处理socket，
         for (si = svc->sockets; si; si = si->next) {
             int socket_type = (
                     !strcmp(si->type, "stream") ? SOCK_STREAM :
                         (!strcmp(si->type, "dgram") ? SOCK_DGRAM : SOCK_SEQPACKET));
+                        	
+            //创建socket，
             int s = create_socket(si->name, socket_type,
                                   si->perm, si->uid, si->gid);
             if (s >= 0) {
+            	//socket创建成功后，发布socket，
                 publish_socket(si->name, s);
             }
         }
@@ -240,7 +247,9 @@ void service_start(struct service *svc, const char *dynamic_args)
 #endif
 
         setpgid(0, getpid());
-
+		
+		
+		//设置请求的一些信息，
     /* as requested, set our gid, supplemental gids, and uid */
         if (svc->gid) {
             setgid(svc->gid);
@@ -251,8 +260,9 @@ void service_start(struct service *svc, const char *dynamic_args)
         if (svc->uid) {
             setuid(svc->uid);
         }
-
+				//进程启动的准备工作做好了，现在开始执行入口点的代码啦，，，
         if (!dynamic_args) {
+        		
             if (execve(svc->args[0], (char**) svc->args, (char**) ENV) < 0) {
                 ERROR("cannot execve('%s'): %s\n", svc->args[0], strerror(errno));
             }
@@ -274,6 +284,7 @@ void service_start(struct service *svc, const char *dynamic_args)
             arg_ptrs[arg_idx] = '\0';
             execve(svc->args[0], (char**) arg_ptrs, (char**) ENV);
         }
+        //子进程是否不应该到达这里啊，
         _exit(127);
     }
 
@@ -284,13 +295,13 @@ void service_start(struct service *svc, const char *dynamic_args)
     }
 
     svc->time_started = gettime();
-    svc->pid = pid;
-    svc->flags |= SVC_RUNNING;
+    svc->pid = pid;//新建进程的进程id，
+    svc->flags |= SVC_RUNNING;//服务的状态标记，正在运行
 
     if (properties_inited())
-        notify_service_state(svc->name, "running");
+        notify_service_state(svc->name, "running");//通知指定的服务的状态，
 }
-
+//停止服务，这里会杀死服务所在进程，
 void service_stop(struct service *svc)
 {
         /* we are no longer running, nor should we
@@ -305,6 +316,9 @@ void service_stop(struct service *svc)
 
     if (svc->pid) {
         NOTICE("service '%s' is being killed\n", svc->name);
+        
+        
+        //杀死进程，，，
         kill(-svc->pid, SIGTERM);
         notify_service_state(svc->name, "stopping");
     } else {
@@ -317,7 +331,7 @@ void property_changed(const char *name, const char *value)
     if (property_triggers_enabled)
         queue_property_triggers(name, value);
 }
-
+//如果需要的话，重新启动service
 static void restart_service_if_needed(struct service *svc)
 {
     time_t next_start_time = svc->time_started + 5;
@@ -333,20 +347,20 @@ static void restart_service_if_needed(struct service *svc)
         process_needs_restart = next_start_time;
     }
 }
-
+//重启相关服务的进程，
 static void restart_processes()
 {
     process_needs_restart = 0;
     service_for_each_flags(SVC_RESTARTING,
                            restart_service_if_needed);
 }
-
+//找到对应的service结构体，然后启动service
 static void msg_start(const char *name)
 {
     struct service *svc;
     char *tmp = NULL;
     char *args = NULL;
-
+		//找到对应的service结构体，
     if (!strchr(name, ':'))
         svc = service_find_by_name(name);
     else {
@@ -359,6 +373,7 @@ static void msg_start(const char *name)
     }
     
     if (svc) {
+    		//启动服务，
         service_start(svc, args);
     } else {
         ERROR("no such service '%s'\n", name);
@@ -377,7 +392,7 @@ static void msg_stop(const char *name)
         ERROR("no such service '%s'\n", name);
     }
 }
-
+//处理控制信息，启动服务，停止服务，
 void handle_control_message(const char *msg, const char *arg)
 {
     if (!strcmp(msg,"start")) {
@@ -459,7 +474,7 @@ static void import_kernel_cmdline(int in_qemu)
         /* don't expose the raw commandline to nonpriv processes */
     chmod("/proc/cmdline", 0440);
 }
-
+//获取action的第一个command,
 static struct command *get_first_command(struct action *act)
 {
     struct listnode *node;
@@ -469,7 +484,7 @@ static struct command *get_first_command(struct action *act)
 
     return node_to_item(node, struct command, clist);
 }
-
+//获取action的cmd之后的command
 static struct command *get_next_command(struct action *act, struct command *cmd)
 {
     struct listnode *node;
@@ -481,12 +496,12 @@ static struct command *get_next_command(struct action *act, struct command *cmd)
 
     return node_to_item(node, struct command, clist);
 }
-
+//指定的cmd是否是action的最后一个command
 static int is_last_command(struct action *act, struct command *cmd)
 {
     return (list_tail(&act->commands) == &cmd->clist);
 }
-
+//执行一个command,这个action构成一个链表，每个aciton里面都有一个command链条，
 void execute_one_command(void)
 {
     int ret;
@@ -634,7 +649,7 @@ static int queue_property_triggers_action(int nargs, char **args)
     property_triggers_enabled = 1;
     return 0;
 }
-
+//条件编译，
 #if BOOTCHART
 static int bootchart_init_action(int nargs, char **args)
 {
@@ -648,7 +663,7 @@ static int bootchart_init_action(int nargs, char **args)
     }
 }
 #endif
-
+//入口点
 int main(int argc, char **argv)
 {
     int fd_count = 0;
@@ -670,6 +685,7 @@ int main(int argc, char **argv)
          * together in the initramdisk on / and then we'll
          * let the rc file figure out the rest.
          */
+         //创建文件系统的基本目录，
     mkdir("/dev", 0755);
     mkdir("/proc", 0755);
     mkdir("/sys", 0755);
@@ -688,9 +704,10 @@ int main(int argc, char **argv)
          * talk to the outside world.
          */
     open_devnull_stdio();
-    log_init();
+    log_init();//初始化log
     
     INFO("reading config file\n");
+    //解析配置文件，
     init_parse_config_file("/init.rc");
 
     /* pull the kernel commandline and ramdisk properties file in */
@@ -700,8 +717,10 @@ int main(int argc, char **argv)
     snprintf(tmp, sizeof(tmp), "/init.%s.rc", hardware);
     init_parse_config_file(tmp);
 
+		//将对应触发器的action添加到action_queue的队列尾部，待后续执行，从下面的死循环可以看到这些动作没有发生相应的事件也执行了，或者叫代码主动触发的？
     action_for_each_trigger("early-init", action_add_queue_tail);
-
+		
+		//第一个参数是函数指针，第二个参数是触发器的名字，这个地方说明，action有代码构建的，也有在脚本里面构建的，会将action加入到action_queue，后续的死循环里面会调用
     queue_builtin_action(wait_for_coldboot_done_action, "wait_for_coldboot_done");
     queue_builtin_action(property_init_action, "property_init");
     queue_builtin_action(keychord_init_action, "keychord_init");
@@ -709,16 +728,19 @@ int main(int argc, char **argv)
     queue_builtin_action(set_init_properties_action, "set_init_properties");
 
         /* execute all the boot actions to get us started */
+        //将对应触发器的action添加到action_queue的队列尾部，待后续执行，
     action_for_each_trigger("init", action_add_queue_tail);
     action_for_each_trigger("early-fs", action_add_queue_tail);
     action_for_each_trigger("fs", action_add_queue_tail);
     action_for_each_trigger("post-fs", action_add_queue_tail);
 
+		//
     queue_builtin_action(property_service_init_action, "property_service_init");
     queue_builtin_action(signal_init_action, "signal_init");
     queue_builtin_action(check_startup_action, "check_startup");
 
     /* execute all the boot actions to get us started */
+    //将对应触发器的action添加到action_queue的队列尾部，待后续执行，
     action_for_each_trigger("early-boot", action_add_queue_tail);
     action_for_each_trigger("boot", action_add_queue_tail);
 
@@ -729,10 +751,11 @@ int main(int argc, char **argv)
 #if BOOTCHART
     queue_builtin_action(bootchart_init_action, "bootchart_init");
 #endif
-
+		//这个地方是个死循环，从action_queue取出action,然后一次执行一个command,然后通过poll取出一个事件进行处理，如此重复
     for(;;) {
         int nr, i, timeout = -1;
-
+        
+				//从action_queue取出action,然后一次执行一个command,逐步执行之前的command啦，
         execute_one_command();
         restart_processes();
 
@@ -777,7 +800,7 @@ int main(int argc, char **argv)
             }
         }
 #endif
-
+				//取出事件，然后执行，，这个地方一次可以取出多个事件啦，，
         nr = poll(ufds, fd_count, timeout);
         if (nr <= 0)
             continue;
